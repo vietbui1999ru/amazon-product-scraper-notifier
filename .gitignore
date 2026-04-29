@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Env — never commit secrets
+backend/.env
+.env
+
+# Node
+frontend/node_modules/
+frontend/dist/
+docs/superpowers/
+AI-NOTES.md
+DESIGN.md
+
+.png
+
+# DB
+*.sqlite

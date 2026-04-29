@@ -1,0 +1,31 @@
+products:
+  - url: "https://www.amazon.com/dp/B0FMS6CHD9"
+    name: "LEGO Speed Champions Bugatti Bolide Turismo"
+  - url: "https://www.amazon.com/dp/B0FMS84RFJ"
+    name: "LEGO Speed Champions Machine of the Future"
+  - url: "https://www.amazon.com/dp/B09XWXM8R8"
+    name: "LEGO Speed Champions Aston Martin"
+  - url: "https://www.amazon.com/dp/B09JKY1FPX"
+    name: "LEGO Speed Champions Lamborghini"
+  - url: "https://www.amazon.com/dp/B07RW6Z692"
+    name: "Corsair Vengeance LPX 32GB DDR4 RAM"
+
+scheduler:
+  check_interval_seconds: 30  # 30s for demo; set to 300 for production
+
+notifications:
+  # Single notifier: "console" or "slack"
+  # Both at once:   ["console", "slack"]
+  # Slack requires slack_webhook_url to be set (or SLACK_WEBHOOK_URL env var)
+  method: "console"
+  slack_webhook_url: ""
+  price_drop_threshold_percent: 1.0
+  price_drop_threshold_absolute: 0.0
+
+scraper:
+  # Proxy list for rotation. Format: http://user:pass@host:port or http://host:port
+  # Leave empty to scrape without proxy (lower success rate on Amazon).
+  # Override at runtime with PROXY_LIST=url1,url2,url3 env var.
+  proxies: []
+
+# database.url is set via DATABASE_URL env var (or backend/.env)

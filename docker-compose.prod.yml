@@ -1,0 +1,110 @@
+services:
+
+  # ── Reverse proxy + TLS ──────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    networks:
+      - edge
+      - internal
+    depends_on:
+      - frontend
+      - backend
+      - docs
+
+  # ── Frontend SPA ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - internal
+    # No ports — Caddy is the only entry point
+
+  # ── FastAPI backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pricechecker:${POSTGRES_PASSWORD}@postgres:5432/pricechecker
+      REDIS_URL: redis://redis:6379
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      CHECK_INTERVAL_SECONDS: ${CHECK_INTERVAL_SECONDS:-300}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONFIG_PATH: /app/config.yaml
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./scripts:/app/scripts:ro
+
+  # ── Docs static site (MkDocs Material) ───────────────────────────────────────
+  docs:
+    build:
+      context: .
+      dockerfile: Dockerfile.docs
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Postgres ─────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      POSTGRES_USER: pricechecker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: pricechecker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No host port — unreachable from outside Docker network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pricechecker -d pricechecker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - internal
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  edge:      # Caddy ↔ host
+  internal:  # Service-to-service only (no external access)
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:    # Persists TLS certs and Caddy CA root
+  caddy_config:
+  caddy_logs:

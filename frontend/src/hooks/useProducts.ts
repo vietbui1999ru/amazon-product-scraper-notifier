@@ -1,0 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
+import { fetchProducts } from '../api/client'
+
+export function useProducts() {
+  return useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+    refetchInterval: 60_000,
+  })
+}

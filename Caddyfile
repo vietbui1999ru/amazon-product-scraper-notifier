@@ -1,0 +1,91 @@
+# Price Drop Monitor — Caddy reverse proxy
+# TLS: "tls internal" = Caddy's built-in local CA (no Let's Encrypt needed for .bui TLD)
+# Trust the root at: /data/caddy/pki/authorities/local/root.crt
+
+(security_headers) {
+	header {
+		# Prevent clickjacking
+		X-Frame-Options "SAMEORIGIN"
+		# Prevent MIME sniffing
+		X-Content-Type-Options "nosniff"
+		# Referrer info stripped on cross-origin requests
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# HSTS: force HTTPS for 1 year (only enable after confirming TLS works)
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# Disable browser features this app doesn't use
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# Basic XSS filter (legacy browsers)
+		X-XSS-Protection "1; mode=block"
+		# CSP: allow same-origin + Amazon CDN for product images
+		Content-Security-Policy "default-src 'self'; img-src 'self' https://m.media-amazon.com https://images-na.ssl-images-amazon.com data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; font-src 'self'"
+		# Remove server fingerprint
+		-Server
+		-X-Powered-By
+	}
+}
+
+# ── Main app ─────────────────────────────────────────────────────────────────
+amazonscraper.viet.bui {
+	tls internal
+
+	import security_headers
+
+	# API → FastAPI backend
+	handle /api/* {
+		reverse_proxy backend:8000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# SSE logs stream — disable buffering
+	handle /api/logs {
+		reverse_proxy backend:8000 {
+			flush_interval -1
+		}
+	}
+
+	# SPA fallback — all other routes → frontend nginx
+	handle {
+		reverse_proxy frontend:80
+	}
+
+	log {
+		output file /var/log/caddy/app.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+		format json
+	}
+}
+
+# ── Docs site ─────────────────────────────────────────────────────────────────
+docs.amazonscraper.viet.bui {
+	tls internal
+
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	reverse_proxy docs:80
+
+	log {
+		output file /var/log/caddy/docs.log {
+			roll_size 5mb
+			roll_keep 3
+		}
+		format json
+	}
+}
+
+# ── HTTP → HTTPS redirect ─────────────────────────────────────────────────────
+http://amazonscraper.viet.bui {
+	redir https://{host}{uri} permanent
+}
+
+http://docs.amazonscraper.viet.bui {
+	redir https://{host}{uri} permanent
+}

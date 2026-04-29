@@ -1,0 +1,49 @@
+site_name: Price Drop Monitor
+site_description: Amazon price tracker — API reference, setup guide, and architecture docs
+site_url: https://docs.amazonscraper.viet.bui
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Kickstart: kickstart.md
+  - Backend:
+    - API Endpoints: backend/api.md
+    - Models: backend/models.md
+    - Repository: backend/repository.md
+    - Scheduler: backend/scheduler.md
+    - Cache: backend/cache.md
+    - Notifications: backend/notifications.md
+    - Scraper: backend/scraper.md
+  - Frontend:
+    - Components: frontend/components.md
+    - Hooks & Client: frontend/hooks.md
+  - Scripts: scripts.md
+  - Deploy:
+    - Homelab (LXC + Caddy): deploy/homelab.md
+  - Panel Prep:
+    - Security Reference: panel-prep/security-reference.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - admonition
+  - tables
+  - toc:
+      permalink: true

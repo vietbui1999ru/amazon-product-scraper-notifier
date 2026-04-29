@@ -1,0 +1,7 @@
+{
+  "include": ["app", "tests"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "standard",
+  "venvPath": ".",
+  "venv": ".venv"
+}
