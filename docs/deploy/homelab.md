@@ -72,24 +72,28 @@ Some routers (OPNsense, pfSense, Unifi) let you add custom DNS host entries. Add
 
 **You must trust this root cert on every device** that will visit the site, or browsers will show a security warning.
 
-### Export and trust on Debian/Ubuntu (server or other Linux)
+### Export the cert from CT 200 (the Caddy host)
+
+Caddy runs on CT 200 (`10.0.0.50`), not in the app Docker Compose stack. Export from there:
 
 ```bash
-# Export from the running Caddy container
-docker compose -f docker-compose.prod.yml cp \
-  caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
-
-# Trust system-wide
-sudo cp caddy-root.crt /usr/local/share/ca-certificates/caddy-local.crt
-sudo update-ca-certificates
+# Export from the Caddy container on CT 200
+ssh root@10.0.0.50 'docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt'
+scp root@10.0.0.50:/tmp/caddy-root.crt ./caddy-root.crt
 ```
 
 ### Trust on macOS
 
 ```bash
-# After copying caddy-root.crt to your Mac
 sudo security add-trusted-cert -d -r trustRoot \
   -k /Library/Keychains/System.keychain caddy-root.crt
+```
+
+### Trust on Debian/Ubuntu
+
+```bash
+sudo cp caddy-root.crt /usr/local/share/ca-certificates/caddy-local.crt
+sudo update-ca-certificates
 ```
 
 ### Trust on iOS / Android

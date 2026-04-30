@@ -240,7 +240,8 @@ Product lookup: Redis URL index first (`product_url:{url}`), then Postgres fallb
 
 | Status | Condition |
 |---|---|
-| `404` | Product not found |
+| `400` | URL does not match Amazon ASIN pattern |
+| `404` | Product not found (URL is valid Amazon URL but not tracked) |
 
 **Side effects**: writes a `PriceCheck` row with `source="self"`, invalidates `cache:products`.
 

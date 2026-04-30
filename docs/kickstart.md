@@ -17,11 +17,9 @@ Quick setup, smoke test, and endpoint reference for the Price Drop Monitor.
 cp .env.example .env
 ```
 
-Edit `.env`:
+For local dev, `DATABASE_URL` and `REDIS_URL` are pre-configured in `docker-compose.yml` — you don't need to set them. The only variable that matters locally is:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://pricechecker:pricechecker@localhost:5433/pricechecker
-REDIS_URL=redis://localhost:6379
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
 
