@@ -305,7 +305,7 @@ async def demo_drop(
     notification_sent = False
     if drop_event is not None:
         try:
-            notifier = create_notifier(get_settings())
+            notifier = create_notifier(get_settings(), get_runtime_config())
             await notifier.send(drop_event)
             notification_sent = True
         except Exception as e:
