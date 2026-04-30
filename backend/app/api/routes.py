@@ -477,6 +477,11 @@ async def cancel_scheduled_price(
     return {"cancelled": scheduled_id}
 
 
+@router.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @router.get("/logs")
 async def stream_logs(request: Request):
     """SSE stream of structured log events. Open in browser or EventSource."""

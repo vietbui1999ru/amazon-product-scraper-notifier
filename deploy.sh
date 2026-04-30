@@ -41,7 +41,7 @@ $COMPOSE up -d
 # ── Health check ──────────────────────────────────────────────────────────────
 echo "==> Waiting for backend to be healthy..."
 for i in $(seq 1 30); do
-  if $COMPOSE exec -T backend curl -sf http://localhost:8000/api/products &>/dev/null; then
+  if $COMPOSE exec -T backend curl -sf http://localhost:8000/health &>/dev/null; then
     echo "==> Backend is up."
     break
   fi

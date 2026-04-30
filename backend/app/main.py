@@ -61,4 +61,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 app.include_router(router)
