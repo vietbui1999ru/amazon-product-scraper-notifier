@@ -9,7 +9,7 @@ services:
     networks:
       - internal
     ports:
-      - "10.20.0.3:8080:80"
+      - "8080:80"
 
   backend:
     build:
@@ -20,7 +20,7 @@ services:
     networks:
       - internal
     ports:
-      - "10.20.0.3:8000:8000"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
