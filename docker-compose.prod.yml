@@ -7,7 +7,7 @@ services:
     networks:
       - internal
     ports:
-      - "10.20.0.3:80:80"
+      - "10.20.0.3:8080:80"
 
   backend:
     build:
