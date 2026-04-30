@@ -78,7 +78,16 @@ export function ConfigPanel({ onClose }: Props) {
   }
 
   const notifMethod = val('notification_method')
-  const notifStr = Array.isArray(notifMethod) ? notifMethod.join(', ') : (notifMethod ?? '')
+  const notifSet: Set<string> = new Set(
+    Array.isArray(notifMethod) ? notifMethod : notifMethod ? [notifMethod] : []
+  )
+
+  function toggleNotif(method: 'console' | 'slack', checked: boolean) {
+    const next = new Set(notifSet)
+    checked ? next.add(method) : next.delete(method)
+    const arr = Array.from(next)
+    set('notification_method', arr.length === 1 ? arr[0] : arr)
+  }
 
   return (
     <div className="card" style={{ padding: 24 }}>
@@ -136,15 +145,19 @@ export function ConfigPanel({ onClose }: Props) {
         </p>
 
         <div style={rowStyle}>
-          <Field label="Method" hint="console · slack · console, slack">
-            <input
-              type="text" style={inputStyle}
-              value={notifStr}
-              onChange={(e) => {
-                const parts = e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
-                set('notification_method', parts.length === 1 ? parts[0] : parts)
-              }}
-            />
+          <Field label="Method">
+            <div style={{ display: 'flex', gap: 16, paddingTop: 8 }}>
+              {(['console', 'slack'] as const).map((m) => (
+                <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={notifSet.has(m)}
+                    onChange={(e) => toggleNotif(m, e.target.checked)}
+                  />
+                  {m}
+                </label>
+              ))}
+            </div>
           </Field>
           <Field label="Drop threshold %" hint="0 = any positive drop">
             <input
