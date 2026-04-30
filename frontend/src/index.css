@@ -49,7 +49,7 @@ input, button { font-size: 14px; }
 
 .app-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   padding-bottom: 24px;
   margin-bottom: 32px;

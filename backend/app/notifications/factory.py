@@ -1,8 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from app.config import Settings
 from app.notifications.base import AbstractNotifier
 from app.notifications.console import ConsoleNotifier
 from app.notifications.multi import MultiNotifier
 from app.notifications.slack import SlackNotifier
+
+if TYPE_CHECKING:
+    from app.runtime_config import RuntimeConfig
 
 _AVAILABLE_METHODS = ("console", "slack")
 
@@ -20,15 +27,16 @@ def _build_single(method: str, settings: Settings) -> AbstractNotifier:
     )
 
 
-def create_notifier(settings: Settings) -> AbstractNotifier:
+def create_notifier(settings: Settings, rc: RuntimeConfig | None = None) -> AbstractNotifier:
     """
     Accepts notification_method as a string or list of strings.
+    When rc is provided, uses rc.notification_method (runtime override).
 
     "console"              → ConsoleNotifier
     "slack"                → SlackNotifier (requires slack_webhook_url)
     ["console", "slack"]   → MultiNotifier (fans out to both)
     """
-    method = settings.notification_method
+    method = rc.notification_method if rc is not None else settings.notification_method
     methods: list[str] = [method] if isinstance(method, str) else list(method)
     notifiers = [_build_single(m, settings) for m in methods]
     return notifiers[0] if len(notifiers) == 1 else MultiNotifier(notifiers)

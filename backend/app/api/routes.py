@@ -19,6 +19,7 @@ from app.cache import (
     invalidate_products_list,
     set_cached_products_list,
 )
+from app.runtime_config import get_runtime_config, runtime_config_as_dict
 
 log = structlog.get_logger(__name__)
 from app.comparison.detector import PricePoint, detect_price_drop
@@ -501,3 +502,37 @@ async def stream_logs(request: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class UpdateConfigRequest(BaseModel):
+    check_interval_seconds: int | None = Field(default=None, ge=10, le=86400)
+    notification_method: str | list[str] | None = None
+    price_drop_threshold_percent: float | None = Field(default=None, ge=0.0)
+    price_drop_threshold_absolute: float | None = Field(default=None, ge=0.0)
+    scraper_timeout_ms: int | None = Field(default=None, ge=1000, le=120000)
+    scraper_min_delay: float | None = Field(default=None, ge=0.0)
+    scraper_max_delay: float | None = Field(default=None, ge=0.0)
+
+
+@router.get("/config")
+async def get_config():
+    return runtime_config_as_dict()
+
+
+@router.patch("/config")
+@limiter.limit("30/minute")
+async def update_config(request: Request, body: UpdateConfigRequest):
+    rc = get_runtime_config()
+    updates = body.model_dump(exclude_none=True)
+    if "scraper_min_delay" in updates and "scraper_max_delay" not in updates:
+        if updates["scraper_min_delay"] > rc.scraper_max_delay:
+            raise HTTPException(400, "scraper_min_delay cannot exceed current scraper_max_delay")
+    if "scraper_max_delay" in updates and "scraper_min_delay" not in updates:
+        if updates["scraper_max_delay"] < rc.scraper_min_delay:
+            raise HTTPException(400, "scraper_max_delay cannot be less than current scraper_min_delay")
+    if "scraper_min_delay" in updates and "scraper_max_delay" in updates:
+        if updates["scraper_min_delay"] > updates["scraper_max_delay"]:
+            raise HTTPException(400, "scraper_min_delay cannot exceed scraper_max_delay")
+    for field, value in updates.items():
+        setattr(rc, field, value)
+    return runtime_config_as_dict()

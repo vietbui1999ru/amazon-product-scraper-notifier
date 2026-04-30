@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import limiter, router
 from app.config import get_settings
-from app.database import wait_for_db
+from app.database import run_migrations, seed_products, wait_for_db
 from app.scheduler.runner import _configure_logging, run_scheduler
 
 # CORS_ORIGINS env var: comma-separated list of allowed origins.
@@ -32,6 +32,8 @@ _API_KEY = os.environ.get("API_KEY", "")
 async def lifespan(app: FastAPI):
     _configure_logging(get_settings().log_level)
     await wait_for_db()
+    run_migrations()
+    await seed_products()
     task = asyncio.create_task(run_scheduler())
     yield
     task.cancel()

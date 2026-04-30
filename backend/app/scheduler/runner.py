@@ -13,6 +13,7 @@ from app.config import ProductConfig, Settings, get_settings
 from app.database import AsyncSessionLocal
 from app.notifications.base import AbstractNotifier
 from app.notifications.factory import create_notifier
+from app.runtime_config import RuntimeConfig, get_runtime_config
 from app.scraper.amazon import AmazonScraper
 from app.storage.repository import ProductRepository
 
@@ -130,7 +131,7 @@ async def _build_drop_event(
     price_check,
     current_price: Decimal,
     current_currency: str,
-    settings: Settings,
+    rc: RuntimeConfig,
 ) -> PriceDropEvent | None:
     """Check for a price drop and mark price_check.notified=True (flushed, not committed).
 
@@ -149,8 +150,8 @@ async def _build_drop_event(
         product_url=product.url,
         previous=PricePoint(price=Decimal(str(previous.price)), currency=previous.currency),
         current=PricePoint(price=current_price, currency=current_currency),
-        threshold_percent=settings.price_drop_threshold_percent,
-        threshold_absolute=settings.price_drop_threshold_absolute,
+        threshold_percent=rc.price_drop_threshold_percent,
+        threshold_absolute=rc.price_drop_threshold_absolute,
     )
 
     if event is None:
@@ -187,7 +188,7 @@ async def _check_product_by_id(
     product_id: int,
     scraper: AmazonScraper,
     notifier: AbstractNotifier,
-    settings: Settings,
+    rc: RuntimeConfig,
     source: str = "amazon",
 ) -> None:
     """Scrape a single product by DB id and record result."""
@@ -217,7 +218,7 @@ async def _check_product_by_id(
 
                 pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    result.price, result.currency, settings,
+                    result.price, result.currency, rc,
                 )
 
                 log.info(
@@ -252,7 +253,7 @@ async def _check_product_config(
     product_config: ProductConfig,
     scraper: AmazonScraper,
     notifier: AbstractNotifier,
-    settings: Settings,
+    rc: RuntimeConfig,
     skip_product_ids: set[int] | None = None,
 ) -> None:
     """Scrape a product defined in config (normal cycle)."""
@@ -286,7 +287,7 @@ async def _check_product_config(
 
                 pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    result.price, result.currency, settings,
+                    result.price, result.currency, rc,
                 )
 
                 log.info(
@@ -323,7 +324,7 @@ async def _check_product_config(
 async def _drain_force_queue(
     scraper: AmazonScraper,
     notifier: AbstractNotifier,
-    settings: Settings,
+    rc: RuntimeConfig,
 ) -> set[int]:
     """Phase 1: drain force-check queue.
 
@@ -359,7 +360,7 @@ async def _drain_force_queue(
     # Fan out as concurrent worker tasks; scraper semaphore controls parallelism.
     tasks = [
         asyncio.create_task(
-            _check_product_by_id(pid, scraper, notifier, settings, source="amazon")
+            _check_product_by_id(pid, scraper, notifier, rc, source="amazon")
         )
         for pid in to_scrape
     ]
@@ -377,7 +378,7 @@ async def _drain_force_queue(
 
 async def _apply_due_scheduled_prices(
     notifier: AbstractNotifier,
-    settings: Settings,
+    rc: RuntimeConfig,
 ) -> set[int]:
     """Phase 2: apply any scheduled prices whose scheduled_for has passed.
 
@@ -415,7 +416,7 @@ async def _apply_due_scheduled_prices(
 
                 pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    price, currency, settings,
+                    price, currency, rc,
                 )
 
                 log.info(
@@ -453,7 +454,7 @@ async def _apply_due_scheduled_prices(
 async def _run_normal_cycle(
     scraper: AmazonScraper,
     notifier: AbstractNotifier,
-    settings: Settings,
+    rc: RuntimeConfig,
     skip_product_ids: set[int] | None = None,
 ) -> None:
     """Phase 3: scrape all configured products as concurrent worker tasks.
@@ -463,6 +464,7 @@ async def _run_normal_cycle(
     Products in skip_product_ids were processed this tick; skipped to avoid
     double-notifications.
     """
+    settings = get_settings()
     if not settings.products:
         log.info("scheduler.no_products_configured")
         return
@@ -470,7 +472,7 @@ async def _run_normal_cycle(
     skip = skip_product_ids or set()
     tasks = [
         asyncio.create_task(
-            _check_product_config(product_config, scraper, notifier, settings, skip_product_ids=skip)
+            _check_product_config(product_config, scraper, notifier, rc, skip_product_ids=skip)
         )
         for product_config in settings.products
     ]
@@ -499,31 +501,45 @@ async def _cleanup_settled_prices() -> None:
 
 async def run_scheduler() -> None:
     settings = get_settings()
-    _configure_logging(settings.log_level if hasattr(settings, "log_level") else "INFO")
+    _configure_logging(settings.log_level)
 
+    rc = get_runtime_config()
     log.info(
         "scheduler.starting",
-        interval=settings.check_interval_seconds,
+        interval=rc.check_interval_seconds,
         products=len(settings.products),
     )
 
-    notifier = create_notifier(settings)
-
-    async with AmazonScraper(proxies=settings.proxies) as scraper:
+    async with AmazonScraper(
+        proxies=settings.proxies,
+        headless=rc.scraper_headless,
+        timeout_ms=rc.scraper_timeout_ms,
+        min_delay=rc.scraper_min_delay,
+        max_delay=rc.scraper_max_delay,
+    ) as scraper:
         while True:
             try:
+                # Re-read runtime config each tick so PATCH /api/config takes effect.
+                rc = get_runtime_config()
+                notifier = create_notifier(settings, rc)
+
+                # Propagate mutable scraper params (headless/proxies need restart).
+                scraper._timeout_ms = rc.scraper_timeout_ms
+                scraper._min_delay = rc.scraper_min_delay
+                scraper._max_delay = rc.scraper_max_delay
+
                 log.info(
                     "TICK",
                     products=len(settings.products),
-                    next=settings.check_interval_seconds,
+                    next=rc.check_interval_seconds,
                 )
 
-                force_ids = await _drain_force_queue(scraper, notifier, settings)
-                applied_ids = await _apply_due_scheduled_prices(notifier, settings)
-                await _run_normal_cycle(scraper, notifier, settings, skip_product_ids=force_ids | applied_ids)
+                force_ids = await _drain_force_queue(scraper, notifier, rc)
+                applied_ids = await _apply_due_scheduled_prices(notifier, rc)
+                await _run_normal_cycle(scraper, notifier, rc, skip_product_ids=force_ids | applied_ids)
                 await _cleanup_settled_prices()
 
-                await asyncio.sleep(settings.check_interval_seconds)
+                await asyncio.sleep(rc.check_interval_seconds)
             except asyncio.CancelledError:
                 raise
             except Exception:

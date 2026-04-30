@@ -58,7 +58,13 @@ class Settings(BaseSettings):
     notification_method: str | list[str] = "console"
     price_drop_threshold_percent: float = 1.0
     price_drop_threshold_absolute: float = 0.0
+
+    # Scraper settings — configurable via config.yaml [scraper] section
     proxies: list[str] = []
+    scraper_headless: bool = True
+    scraper_timeout_ms: int = 30000
+    scraper_min_delay: float = 1.0
+    scraper_max_delay: float = 5.0
 
     @classmethod
     def from_yaml_and_env(cls) -> "Settings":
@@ -69,7 +75,6 @@ class Settings(BaseSettings):
 
         notif_raw = raw.get("notifications", {})
         scheduler_raw = raw.get("scheduler", {})
-        db_raw = raw.get("database", {})
 
         scraper_raw = raw.get("scraper", {})
         proxy_env = os.environ.get("PROXY_LIST", "")
@@ -84,6 +89,10 @@ class Settings(BaseSettings):
             "price_drop_threshold_absolute": notif_raw.get("price_drop_threshold_absolute", 0.0),
             "check_interval_seconds": scheduler_raw.get("check_interval_seconds", 300),
             "proxies": proxies,
+            "scraper_headless": scraper_raw.get("headless", True),
+            "scraper_timeout_ms": scraper_raw.get("timeout_ms", 30000),
+            "scraper_min_delay": scraper_raw.get("min_delay_seconds", 1.0),
+            "scraper_max_delay": scraper_raw.get("max_delay_seconds", 5.0),
         }
 
         if notif_raw.get("slack_webhook_url"):

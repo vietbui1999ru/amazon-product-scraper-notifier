@@ -48,3 +48,36 @@ async def wait_for_db(retries: int = 10, delay: float = 2.0) -> None:
             if attempt == retries:
                 raise
             await asyncio.sleep(delay)
+
+
+def run_migrations() -> None:
+    """Run Alembic migrations to head. Safe to call on every startup."""
+    import logging
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    ini_path = Path(__file__).parent.parent / "alembic.ini"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
+
+    logging.getLogger("alembic").setLevel(logging.INFO)
+    command.upgrade(cfg, "head")
+
+
+async def seed_products() -> None:
+    """Insert config.yaml products that don't exist yet. Idempotent."""
+    from app.config import get_settings
+    from app.storage.repository import ProductRepository
+
+    products = get_settings().products
+    if not products:
+        return
+
+    async with AsyncSessionLocal() as session:
+        repo = ProductRepository(session)
+        for p in products:
+            _, created = await repo.get_or_create_product(url=p.url, name=p.name)
+            if created:
+                await session.commit()

@@ -11,7 +11,7 @@ products:
     name: "Corsair Vengeance LPX 32GB DDR4 RAM"
 
 scheduler:
-  check_interval_seconds: 30  # 30s for demo; set to 300 for production
+  check_interval_seconds: 300
 
 notifications:
   # Single notifier: "console" or "slack"
@@ -27,5 +27,9 @@ scraper:
   # Leave empty to scrape without proxy (lower success rate on Amazon).
   # Override at runtime with PROXY_LIST=url1,url2,url3 env var.
   proxies: []
+  headless: true
+  timeout_ms: 30000
+  min_delay_seconds: 1.0
+  max_delay_seconds: 5.0
 
 # database.url is set via DATABASE_URL env var (or backend/.env)

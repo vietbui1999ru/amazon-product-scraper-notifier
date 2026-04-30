@@ -3,6 +3,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_KEY: ${VITE_API_KEY:-}
     restart: unless-stopped
     networks:
       - internal
@@ -28,8 +30,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://pricechecker:${POSTGRES_PASSWORD}@postgres:5432/pricechecker
       REDIS_URL: redis://redis:6379
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      CHECK_INTERVAL_SECONDS: ${CHECK_INTERVAL_SECONDS:-300}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_KEY: ${API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       CONFIG_PATH: /app/config.yaml
     volumes:
       - ./config.yaml:/app/config.yaml:ro

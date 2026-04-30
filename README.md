@@ -21,7 +21,7 @@ Once the stack is healthy:
 - Backend API: http://localhost:8000/api/products
 - Dashboard:  http://localhost:3000
 
-The scheduler starts automatically inside the backend container and begins checking prices on the configured interval (default 120 seconds).
+The scheduler starts automatically inside the backend container and begins checking prices on the configured interval (default 300 seconds).
 
 To tail logs for just the scraper:
 
@@ -73,21 +73,28 @@ All runtime configuration lives in `config.yaml` at the repo root. Environment v
 | --- | --- |
 | `products[].url` | Amazon product URL (canonical `/dp/<ASIN>` form preferred) |
 | `products[].name` | Display name shown in the dashboard and notifications |
-| `scheduler.check_interval_seconds` | Seconds between full check cycles (default 120) |
-| `notifications.method` | `console` or `slack` |
+| `scheduler.check_interval_seconds` | Seconds between full check cycles (default 300) |
+| `notifications.method` | `console`, `slack`, or `["console", "slack"]` |
 | `notifications.slack_webhook_url` | Required when `method = slack` (or use `SLACK_WEBHOOK_URL` env var) |
 | `notifications.price_drop_threshold_percent` | Drop must exceed this percentage to notify |
 | `notifications.price_drop_threshold_absolute` | Drop must exceed this absolute dollar amount to notify |
-| `database.url` | SQLAlchemy async URL (overridden by `DATABASE_URL`) |
+| `scraper.proxies` | List of proxy URLs for rotation (`http://user:pass@host:port`) |
+| `scraper.headless` | Run Chromium headless (default `true`) |
+| `scraper.timeout_ms` | Playwright page timeout in milliseconds (default `30000`) |
+| `scraper.min_delay_seconds` | Minimum random delay between requests (default `1.0`) |
+| `scraper.max_delay_seconds` | Maximum random delay between requests (default `5.0`) |
 
 Environment overrides (see `.env.example`):
 
 | Variable | Overrides |
 | --- | --- |
-| `DATABASE_URL` | `database.url` |
+| `DATABASE_URL` | DB connection string (SQLAlchemy async URL) |
 | `SLACK_WEBHOOK_URL` | `notifications.slack_webhook_url` |
-| `CHECK_INTERVAL_SECONDS` | `scheduler.check_interval_seconds` |
 | `LOG_LEVEL` | structlog level (`DEBUG`, `INFO`, `WARNING`) |
+| `CORS_ORIGINS` | Comma-separated allowed origins (default: localhost:3000,localhost:5173) |
+| `API_KEY` | If set, all requests must include `X-API-Key: <value>` header |
+| `PROXY_LIST` | Comma-separated proxy URLs; overrides `scraper.proxies` in config.yaml |
+| `REDIS_URL` | Redis connection URL (default: `redis://redis:6379`) |
 
 Adding or removing a product is a `config.yaml` edit + restart — no code change required.
 
@@ -238,7 +245,7 @@ To trigger a notification after a manual insert, use `demo_drop.py` instead — 
 
 - **Scraper** — Playwright + playwright-stealth v2, 5-selector cascade per product
 - **Storage** — Postgres 16 via async SQLAlchemy 2.0 + asyncpg; Alembic migrations
-- **Scheduler** — 3-phase asyncio loop (force queue drain → apply scheduled prices → normal scrape); 120s default interval
+- **Scheduler** — 4-phase asyncio loop (force queue drain → apply scheduled prices → normal scrape → cleanup); 300s default interval
 - **Comparison** — pure function comparing latest two persisted observations
 - **Notifications** — pluggable via factory: `console` or `slack` (extensible)
 - **API** — FastAPI; see endpoint table above

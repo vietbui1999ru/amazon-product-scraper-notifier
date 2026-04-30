@@ -5,6 +5,7 @@ import { ProductDetail } from './components/ProductDetail'
 import { SearchBar } from './components/SearchBar'
 import { SearchResults } from './components/SearchResults'
 import { Toast } from './components/Toast'
+import { ConfigPanel } from './components/ConfigPanel'
 import { useSearch } from './hooks/useSearch'
 import { useProducts } from './hooks/useProducts'
 import { addProduct, RateLimitError } from './api/client'
@@ -20,6 +21,7 @@ export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [selectedAsins, setSelectedAsins] = useState<Set<string>>(new Set())
   const [batchTracking, setBatchTracking] = useState(false)
+  const [showConfig, setShowConfig] = useState(false)
 
   const queryClient = useQueryClient()
   const { results, loading: searchLoading, search } = useSearch()
@@ -112,9 +114,27 @@ export default function App() {
       )}
 
       <header className="app-header">
-        <h1>Price Monitor</h1>
-        <p>Track Amazon products · get drop alerts</p>
+        <div>
+          <h1>Price Monitor</h1>
+          <p>Track Amazon products · get drop alerts</p>
+        </div>
+        <button
+          onClick={() => setShowConfig((v) => !v)}
+          title="Runtime config"
+          style={{
+            background: 'none', border: '1px solid var(--border)', borderRadius: 8,
+            cursor: 'pointer', color: 'var(--text-muted)', padding: '6px 10px', fontSize: 16,
+          }}
+        >
+          ⚙
+        </button>
       </header>
+
+      {showConfig && (
+        <div style={{ maxWidth: 640, margin: '0 auto 16px' }}>
+          <ConfigPanel onClose={() => setShowConfig(false)} />
+        </div>
+      )}
 
       <div className="app-grid">
         <aside className="sidebar">
