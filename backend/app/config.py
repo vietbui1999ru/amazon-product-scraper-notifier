@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        frozen=True,
     )
 
     # Set via DATABASE_URL env var or .env — never from config.yaml

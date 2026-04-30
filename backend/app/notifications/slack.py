@@ -1,3 +1,6 @@
+import asyncio
+import re
+
 import aiohttp
 
 from app.comparison.detector import PriceDropEvent
@@ -5,6 +8,7 @@ from app.notifications.base import AbstractNotifier
 from app.notifications.errors import NotificationError
 
 _TIMEOUT = aiohttp.ClientTimeout(total=10)
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class SlackNotifier(AbstractNotifier):
@@ -24,27 +28,27 @@ class SlackNotifier(AbstractNotifier):
                         raise NotificationError(
                             f"Slack webhook returned non-2xx status: {response.status}"
                         )
-        except aiohttp.ClientError as exc:
-            raise NotificationError(f"Failed to reach Slack webhook: {exc}") from exc
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise NotificationError(
+                f"Failed to reach Slack webhook: {type(exc).__name__}"
+            ) from None
 
     def _build_payload(self, event: PriceDropEvent) -> dict:
-        safe_name = event.product_name.replace("<", "").replace(">", "").replace("|", "")
+        # Strip control chars; truncate to 200 chars; use plain_text to prevent mrkdwn injection
+        safe_name = _CTRL_RE.sub("", event.product_name)[:200]
         return {
             "blocks": [
                 {
                     "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Price Drop Alert 🎉",
-                        "emoji": True,
-                    },
+                    "text": {"type": "plain_text", "text": "Price Drop Alert!", "emoji": True},
                 },
                 {
                     "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*<{event.product_url}|{safe_name}>*",
-                    },
+                    "text": {"type": "plain_text", "text": safe_name, "emoji": False},
+                },
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"<{event.product_url}|View on Amazon>"},
                     "fields": [
                         {"type": "mrkdwn", "text": f"*Old Price*\n{event.currency} {event.old_price:.2f}"},
                         {"type": "mrkdwn", "text": f"*New Price*\n{event.currency} {event.new_price:.2f}"},
@@ -54,12 +58,7 @@ class SlackNotifier(AbstractNotifier):
                 },
                 {
                     "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": "Monitored by Price Drop Monitor",
-                        }
-                    ],
+                    "elements": [{"type": "mrkdwn", "text": "Monitored by Price Drop Monitor"}],
                 },
             ]
         }

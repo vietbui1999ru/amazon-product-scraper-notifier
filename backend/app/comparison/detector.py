@@ -31,11 +31,14 @@ def detect_price_drop(
 ) -> PriceDropEvent | None:
     """
     Returns PriceDropEvent if current < previous AND drop exceeds at least one threshold.
-    Returns None if no meaningful drop.
+    Returns None if no meaningful drop or if currencies differ.
     threshold_percent: minimum % drop required (0 = disabled)
     threshold_absolute: minimum absolute drop required (0 = disabled)
     Logic: drop must exceed EITHER threshold (not both). If both are 0, any drop triggers.
     """
+    if previous.currency != current.currency:
+        return None
+
     if current.price >= previous.price:
         return None
 

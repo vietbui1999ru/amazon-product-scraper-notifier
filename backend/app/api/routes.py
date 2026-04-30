@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from slowapi import Limiter
@@ -36,7 +36,8 @@ limiter = Limiter(key_func=get_remote_address)
 
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
 _AMAZON_ASIN_URL_RE = re.compile(
-    r"https?://(?:www\.)?amazon\.[a-z.]+/.*?/dp/[A-Z0-9]{10}", re.IGNORECASE
+    r"https?://(?:www\.)?amazon\.(?:com|co\.uk|de|fr|it|es|ca|com\.au|co\.jp|in|nl|pl|se|sg|com\.mx|com\.br)/.*?/dp/[A-Z0-9]{10}",
+    re.IGNORECASE,
 )
 
 
@@ -74,7 +75,7 @@ class ProductResponse(BaseModel):
 
 class AddProductRequest(BaseModel):
     url: str
-    name: str
+    name: str = Field(max_length=200)
     image_url: str | None = None
     rating: str | None = None
     initial_price: float | None = None
@@ -95,24 +96,21 @@ async def list_products(session: AsyncSession = Depends(get_db)):
         log.warning("cache.error", error=str(e))
 
     repo = ProductRepository(session)
-    products = await repo.get_all_products()
+    rows = await repo.get_all_products_with_latest_prices()
 
-    responses: list[ProductResponse] = []
-    for product in products:
-        last_check = await repo.get_last_successful_price(product.id)
-        latest_price = float(last_check.price) if last_check and last_check.price else None
-        responses.append(
-            ProductResponse(
-                id=product.id,
-                url=product.url,
-                name=product.name,
-                asin=product.asin,
-                created_at=product.created_at,
-                image_url=product.image_url,
-                rating=product.rating,
-                latest_price=latest_price,
-            )
+    responses = [
+        ProductResponse(
+            id=product.id,
+            url=product.url,
+            name=product.name,
+            asin=product.asin,
+            created_at=product.created_at,
+            image_url=product.image_url,
+            rating=product.rating,
+            latest_price=float(check.price) if check and check.price else None,
         )
+        for product, check in rows
+    ]
 
     try:
         data = [r.model_dump(mode="json") for r in responses]
@@ -152,8 +150,11 @@ async def search_products(
 
 
 @router.post("/products", response_model=ProductResponse, status_code=201)
+@limiter.limit("20/minute")
 async def add_product(
+    request: Request,
     body: AddProductRequest,
+    response: Response,
     session: AsyncSession = Depends(get_db),
 ) -> ProductResponse:
     if not _AMAZON_ASIN_URL_RE.search(body.url):
@@ -167,6 +168,8 @@ async def add_product(
         image_url=body.image_url,
         rating=body.rating,
     )
+    if not created:
+        response.status_code = 200
 
     initial_price = None
     if created and body.initial_price is not None:
@@ -247,6 +250,8 @@ async def demo_drop(
     session: AsyncSession = Depends(get_db),
 ):
     """Inject a fake price drop and fire the notifier. Redis-first product lookup."""
+    if not _AMAZON_ASIN_URL_RE.search(body.url):
+        raise HTTPException(status_code=400, detail="URL must be a valid Amazon product URL containing a /dp/ASIN")
     normalized_url = _normalize_amazon_url(body.url)
     repo = ProductRepository(session)
 
@@ -276,9 +281,9 @@ async def demo_drop(
     session.add(check)
     await session.flush()
 
-    notification_sent = False
+    drop_event = None
     if previous and previous.price is not None:
-        event = detect_price_drop(
+        drop_event = detect_price_drop(
             product_id=product.id,
             product_name=product.name,
             product_url=product.url,
@@ -287,17 +292,23 @@ async def demo_drop(
             threshold_percent=0.0,
             threshold_absolute=0.0,
         )
-        if event is not None:
-            notifier = create_notifier(get_settings())
-            await notifier.send(event)
+        if drop_event is not None:
             check.notified = True
-            notification_sent = True
 
     await session.commit()
     try:
         await invalidate_products_list()
     except Exception as e:
         log.warning("cache.invalidate_failed", error=str(e))
+
+    notification_sent = False
+    if drop_event is not None:
+        try:
+            notifier = create_notifier(get_settings())
+            await notifier.send(drop_event)
+            notification_sent = True
+        except Exception as e:
+            log.warning("notifier.send_failed", product=product.name, error=str(e))
 
     return {
         "product": product.name,
@@ -329,13 +340,11 @@ async def force_check(
         products = await repo.get_all_products()
         ids = [p.id for p in products]
         not_found: list[int] = []
-    elif body.product_ids:
+    elif body.product_ids is not None:
+        if not body.product_ids:
+            raise HTTPException(400, "product_ids must not be empty")
         requested = body.product_ids
-        existing_products = []
-        for pid in requested:
-            p = await repo.get_product_by_id(pid)
-            if p is not None:
-                existing_products.append(p)
+        existing_products = await repo.get_products_by_ids(requested)
         ids = [p.id for p in existing_products]
         not_found = [pid for pid in requested if pid not in ids]
     else:

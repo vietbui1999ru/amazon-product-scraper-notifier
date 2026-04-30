@@ -8,7 +8,7 @@ import structlog
 from sqlalchemy import text
 
 from app.cache import invalidate_products_list
-from app.comparison.detector import PricePoint, detect_price_drop
+from app.comparison.detector import PriceDropEvent, PricePoint, detect_price_drop
 from app.config import ProductConfig, Settings, get_settings
 from app.database import AsyncSessionLocal
 from app.notifications.base import AbstractNotifier
@@ -123,21 +123,25 @@ def _configure_logging(level: str) -> None:
 
 # ── Core scrape + notification logic ─────────────────────────────────────────
 
-async def _run_drop_detection_and_notify(
+async def _build_drop_event(
     session,
     repo: ProductRepository,
     product,
     price_check,
     current_price: Decimal,
     current_currency: str,
-    notifier: AbstractNotifier,
     settings: Settings,
-) -> bool:
-    """Run drop detection against the previous price and fire notifier if needed.
-    Returns True if a notification was sent."""
+) -> PriceDropEvent | None:
+    """Check for a price drop and mark price_check.notified=True (flushed, not committed).
+
+    Returns the PriceDropEvent if a notification should be sent, None otherwise.
+    Caller must: (1) commit the session, (2) call notifier.send(event) after commit.
+    This ordering keeps the DB transaction closed before the Slack HTTP call and
+    ensures at-most-once delivery (notified=True committed before send is attempted).
+    """
     previous = await repo.get_previous_successful_price(product.id, exclude_id=price_check.id)
     if previous is None or previous.price is None:
-        return False
+        return None
 
     event = detect_price_drop(
         product_id=product.id,
@@ -150,30 +154,33 @@ async def _run_drop_detection_and_notify(
     )
 
     if event is None:
-        return False
+        return None
 
-    async with session.begin_nested():
-        lock_result = await session.execute(
-            text("SELECT pg_try_advisory_xact_lock(:id)"),
-            {"id": product.id},
-        )
-        if lock_result.scalar():
-            await session.refresh(price_check)
-            if not price_check.notified:
-                await notifier.send(event)
-                price_check.notified = True
+    # Advisory lock in the main transaction (not a savepoint) — held until caller commits,
+    # preventing concurrent workers from sending duplicate notifications.
+    lock_result = await session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:id)"),
+        {"id": product.id},
+    )
+    if not lock_result.scalar():
+        return None
 
-                log.info(
-                    "DROP",
-                    product=product.name,
-                    old=str(previous.price),
-                    new=str(current_price),
-                    pct=f"{event.drop_percent:.1f}",
-                    diff=f"{event.drop_amount:.2f}",
-                )
-                return True
+    await session.refresh(price_check)
+    if price_check.notified:
+        return None
 
-    return False
+    price_check.notified = True
+    await session.flush()
+
+    log.info(
+        "DROP",
+        product=product.name,
+        old=str(previous.price),
+        new=str(current_price),
+        pct=f"{event.drop_percent:.1f}",
+        diff=f"{event.drop_amount:.2f}",
+    )
+    return event
 
 
 async def _check_product_by_id(
@@ -208,9 +215,9 @@ async def _check_product_by_id(
                 now = datetime.now(timezone.utc)
                 await repo.cancel_pending_scheduled_prices(product.id, "amazon_scrape", now)
 
-                await _run_drop_detection_and_notify(
+                pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    result.price, result.currency, notifier, settings,
+                    result.price, result.currency, settings,
                 )
 
                 log.info(
@@ -218,17 +225,24 @@ async def _check_product_by_id(
                     product=product.name,
                     price=str(result.price),
                     currency=result.currency,
-                    was="?",  # previous price not fetched here for brevity
+                    was="?",
                     src=source,
                 )
             else:
                 log.warning("FAIL", product=product.name, reason=result.error_message or "unknown")
+                pending_event = None
 
             await session.commit()
             try:
                 await invalidate_products_list()
             except Exception as e:
                 log.warning("cache.invalidate_failed", error=str(e))
+
+            if pending_event is not None:
+                try:
+                    await notifier.send(pending_event)
+                except Exception as e:
+                    log.warning("notifier.send_failed", product=product.name, error=str(e))
 
     except Exception:
         log.exception("price_check.failed", product=f"id={product_id}")
@@ -270,9 +284,9 @@ async def _check_product_config(
                 now = datetime.now(timezone.utc)
                 await repo.cancel_pending_scheduled_prices(product.id, "amazon_scrape", now)
 
-                await _run_drop_detection_and_notify(
+                pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    result.price, result.currency, notifier, settings,
+                    result.price, result.currency, settings,
                 )
 
                 log.info(
@@ -286,12 +300,19 @@ async def _check_product_config(
                 await repo.prune_price_history(product.id, keep=500)
             else:
                 log.warning("FAIL", product=product.name, reason=result.error_message or "unknown")
+                pending_event = None
 
             await session.commit()
             try:
                 await invalidate_products_list()
             except Exception as e:
                 log.warning("cache.invalidate_failed", error=str(e))
+
+            if pending_event is not None:
+                try:
+                    await notifier.send(pending_event)
+                except Exception as e:
+                    log.warning("notifier.send_failed", product=product.name, error=str(e))
 
     except Exception:
         log.exception("price_check.failed", product=product_config.name)
@@ -392,9 +413,9 @@ async def _apply_due_scheduled_prices(
                     source="self",
                 )
 
-                await _run_drop_detection_and_notify(
+                pending_event = await _build_drop_event(
                     session, repo, product, price_check,
-                    price, currency, notifier, settings,
+                    price, currency, settings,
                 )
 
                 log.info(
@@ -416,6 +437,12 @@ async def _apply_due_scheduled_prices(
                 except Exception as e:
                     log.warning("cache.invalidate_failed", error=str(e))
                 applied_product_ids.add(product_id)
+
+                if pending_event is not None:
+                    try:
+                        await notifier.send(pending_event)
+                    except Exception as e:
+                        log.warning("notifier.send_failed", product=product.name, error=str(e))
 
         except Exception:
             log.exception("scheduled_price.failed", product_id=product_id)
@@ -484,15 +511,21 @@ async def run_scheduler() -> None:
 
     async with AmazonScraper(proxies=settings.proxies) as scraper:
         while True:
-            log.info(
-                "TICK",
-                products=len(settings.products),
-                next=settings.check_interval_seconds,
-            )
+            try:
+                log.info(
+                    "TICK",
+                    products=len(settings.products),
+                    next=settings.check_interval_seconds,
+                )
 
-            force_ids = await _drain_force_queue(scraper, notifier, settings)
-            applied_ids = await _apply_due_scheduled_prices(notifier, settings)
-            await _run_normal_cycle(scraper, notifier, settings, skip_product_ids=force_ids | applied_ids)
-            await _cleanup_settled_prices()
+                force_ids = await _drain_force_queue(scraper, notifier, settings)
+                applied_ids = await _apply_due_scheduled_prices(notifier, settings)
+                await _run_normal_cycle(scraper, notifier, settings, skip_product_ids=force_ids | applied_ids)
+                await _cleanup_settled_prices()
 
-            await asyncio.sleep(settings.check_interval_seconds)
+                await asyncio.sleep(settings.check_interval_seconds)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("scheduler.crashed")
+                await asyncio.sleep(30)

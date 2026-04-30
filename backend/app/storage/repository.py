@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +52,10 @@ class ProductRepository:
             # Two concurrent requests raced — re-fetch the winner's row.
             await self._session.rollback()
             result = await self._session.execute(select(Product).where(Product.url == url))
-            return result.scalar_one(), False
+            existing = result.scalar_one_or_none()
+            if existing is None:
+                raise  # extremely rare: race winner rolled back too
+            return existing, False
 
     async def record_price_check(
         self,
@@ -104,6 +107,40 @@ class ProductRepository:
     async def get_all_products(self) -> list[Product]:
         result = await self._session.execute(
             select(Product).order_by(Product.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_all_products_with_latest_prices(
+        self,
+    ) -> list[tuple[Product, "PriceCheck | None"]]:
+        """Return all products with their latest successful price in a single query."""
+        latest_subq = (
+            select(
+                PriceCheck.product_id,
+                func.max(PriceCheck.id).label("max_id"),
+            )
+            .where(
+                PriceCheck.scrape_success.is_(True),
+                PriceCheck.price.is_not(None),
+            )
+            .group_by(PriceCheck.product_id)
+            .subquery()
+        )
+        stmt = (
+            select(Product, PriceCheck)
+            .outerjoin(latest_subq, Product.id == latest_subq.c.product_id)
+            .outerjoin(PriceCheck, PriceCheck.id == latest_subq.c.max_id)
+            .order_by(Product.created_at.asc())
+        )
+        result = await self._session.execute(stmt)
+        return [(prod, check) for prod, check in result.all()]
+
+    async def get_products_by_ids(self, ids: list[int]) -> list[Product]:
+        """Fetch multiple products by ID in a single query."""
+        if not ids:
+            return []
+        result = await self._session.execute(
+            select(Product).where(Product.id.in_(ids))
         )
         return list(result.scalars().all())
 
@@ -232,16 +269,19 @@ class ProductRepository:
     async def cancel_scheduled_price(
         self, scheduled_id: int, reason: str, now: datetime
     ) -> bool:
-        """Cancel a specific scheduled price. Returns False if not found or already settled."""
-        row = await self.get_scheduled_price_by_id(scheduled_id)
-        if row is None:
-            return False
-        if row.applied_at is not None or row.cancelled_at is not None:
-            return False
-        row.cancelled_at = now
-        row.cancel_reason = reason
-        await self._session.flush()
-        return True
+        """Atomically cancel a specific scheduled price. Returns False if not found or already settled."""
+        stmt = (
+            update(ScheduledPrice)
+            .where(
+                ScheduledPrice.id == scheduled_id,
+                ScheduledPrice.applied_at.is_(None),
+                ScheduledPrice.cancelled_at.is_(None),
+            )
+            .values(cancelled_at=now, cancel_reason=reason)
+            .returning(ScheduledPrice.id)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     # ── Maintenance ──────────────────────────────────────────────────────────
 
