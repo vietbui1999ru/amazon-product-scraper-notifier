@@ -9,6 +9,8 @@ A small full-stack application that monitors a configurable list of Amazon produ
  2. [AI choices](/AI-doc.md)
  3. [AI-generated Code Analyses](/ANALYSIS.md)
 
+ Additionally, there is a [Documentation section](/docs/) that provides detailed functions, patterns, and examples on how to interact with the app via CLI or UI (or scroll down to see the examples too)
+
 ---
 
 # TODO: Add demo images/gif/video
