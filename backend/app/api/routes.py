@@ -37,7 +37,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
 _AMAZON_ASIN_URL_RE = re.compile(
-    r"https?://(?:www\.)?amazon\.(?:com|co\.uk|de|fr|it|es|ca|com\.au|co\.jp|in|nl|pl|se|sg|com\.mx|com\.br)/.*?/dp/[A-Z0-9]{10}",
+    r"https?://(?:www\.)?amazon\.(?:com|co\.uk|de|fr|it|es|ca|com\.au|co\.jp|in|nl|pl|se|sg|com\.mx|com\.br)/(?:.+/)?dp/[A-Z0-9]{10}",
     re.IGNORECASE,
 )
 
