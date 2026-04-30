@@ -20,7 +20,7 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/pricecheck
+DATABASE_URL=postgresql+asyncpg://pricechecker:pricechecker@localhost:5433/pricechecker
 REDIS_URL=redis://localhost:6379
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
 ```
@@ -151,7 +151,7 @@ curl -s -X POST http://localhost:8000/api/scheduler/prices \
   }' | jq
 ```
 
-The scheduler tick runs every 30s (configurable in `config.yaml`). When `scheduled_for` passes, the price is applied and the notifier fires if it's a drop.
+The scheduler tick runs every 300s by default (configurable in `config.yaml` or via `PATCH /api/config`). When `scheduled_for` passes, the price is applied and the notifier fires if it's a drop.
 
 ---
 
@@ -279,7 +279,7 @@ Key fields in `config.yaml`:
 
 | Field | Default | Notes |
 |---|---|---|
-| `scheduler.check_interval_seconds` | `30` | Seconds between scrape cycles. Use `300` for production. |
+| `scheduler.check_interval_seconds` | `300` | Seconds between scrape cycles. |
 | `notifications.method` | `"console"` | `"console"`, `"slack"`, or `["console", "slack"]` |
 | `notifications.slack_webhook_url` | `""` | Override with `SLACK_WEBHOOK_URL` env var |
 | `notifications.price_drop_threshold_percent` | `1.0` | Minimum % drop to trigger alert (0.0 = any drop) |

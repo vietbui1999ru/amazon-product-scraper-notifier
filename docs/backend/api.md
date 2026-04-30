@@ -65,7 +65,7 @@ Add a product to tracking.
 
 | Field | Required | Notes |
 |---|---|---|
-| `url` | yes | Must match `https?://(www\.)?amazon\.[a-z.]+/.*?/dp/[A-Z0-9]{10}` |
+| `url` | yes | Must match `https?://(www\.)?amazon\.[a-z.]+/(?:.+/)?dp/[A-Z0-9]{10}` — product slug before `/dp/` is optional |
 | `name` | yes | |
 | `image_url` | no | |
 | `rating` | no | |
@@ -278,9 +278,12 @@ or use `url` instead of `product_id`:
 |---|---|---|
 | `product_id` or `url` | one required | mutually exclusive |
 | `price` | yes | `> 0` |
-| `minutes` | yes | `1–525600` (max 1 year) |
+| `minutes` | one required | `1–525600` (max 1 year) |
+| `seconds` | one required | `1–86400` (max 24 hours) |
 
-`scheduled_for` is computed as `now (UTC, seconds zeroed) + timedelta(minutes=minutes)`.
+Provide either `minutes` or `seconds`, not both.
+
+`scheduled_for` is computed as `now (UTC) + delay`.
 
 **Response** — `201 Created`
 
@@ -374,3 +377,68 @@ data: {"event": "DROP", ...}
 - `Cache-Control: no-cache` and `X-Accel-Buffering: no` headers are set to prevent proxy buffering.
 
 No authentication. No rate limit on this endpoint.
+
+---
+
+## Config
+
+### `GET /api/config`
+
+Returns the current runtime configuration (mutable, no restart required to change).
+
+**Response** — `200 OK`
+
+```json
+{
+  "check_interval_seconds": 300,
+  "notification_method": "console",
+  "price_drop_threshold_percent": 1.0,
+  "price_drop_threshold_absolute": 0.0,
+  "scraper_headless": true,
+  "scraper_timeout_ms": 30000,
+  "scraper_min_delay": 1.0,
+  "scraper_max_delay": 5.0
+}
+```
+
+`scraper_headless` is read-only (requires backend restart to change — Playwright browser is launched once at startup).
+
+---
+
+### `PATCH /api/config`
+
+Update one or more runtime config fields. Changes take effect on the next scheduler tick.
+
+**Rate limit**: 30 per minute.
+
+**Request body** — all fields optional:
+
+```json
+{
+  "check_interval_seconds": 60,
+  "notification_method": ["console", "slack"],
+  "price_drop_threshold_percent": 5.0,
+  "price_drop_threshold_absolute": 2.0,
+  "scraper_timeout_ms": 45000,
+  "scraper_min_delay": 2.0,
+  "scraper_max_delay": 8.0
+}
+```
+
+| Field | Constraints |
+|---|---|
+| `check_interval_seconds` | 10–86400 |
+| `notification_method` | `"console"`, `"slack"`, or `["console", "slack"]` |
+| `price_drop_threshold_percent` | `>= 0.0` |
+| `price_drop_threshold_absolute` | `>= 0.0` |
+| `scraper_timeout_ms` | 1000–120000 |
+| `scraper_min_delay` | `>= 0.0`, must not exceed `scraper_max_delay` |
+| `scraper_max_delay` | `>= 0.0`, must not be less than `scraper_min_delay` |
+
+**Response** — `200 OK` — full updated config (same shape as `GET /api/config`).
+
+**Errors**
+
+| Status | Condition |
+|---|---|
+| `400` | `scraper_min_delay > scraper_max_delay` |

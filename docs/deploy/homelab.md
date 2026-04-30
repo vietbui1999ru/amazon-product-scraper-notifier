@@ -117,7 +117,6 @@ Edit `.env`:
 ```env
 POSTGRES_PASSWORD=changeme_use_a_strong_password
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-CHECK_INTERVAL_SECONDS=300
 LOG_LEVEL=INFO
 ```
 
@@ -326,4 +325,4 @@ docker compose -f docker-compose.prod.yml up -d docs
 | SSH restricted to home IP/VPN | Manual | `ufw allow from <subnet> to any port 22` — do NOT use `ufw allow 22/tcp` |
 | SSH key-only (no password) | Manual | `PasswordAuthentication no` in `/etc/ssh/sshd_config` |
 | App LXC isolated from LAN | Optional | Two-LXC topology — see section above |
-| No auth on mutating endpoints | Known gap | Demo only — documented in DESIGN.md |
+| API key auth on all endpoints | ✓ | Set `API_KEY` + `VITE_API_KEY` env vars. Leave blank to disable (local dev only). |
