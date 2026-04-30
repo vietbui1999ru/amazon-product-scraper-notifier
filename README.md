@@ -2,6 +2,19 @@
 
 A small full-stack application that monitors a configurable list of Amazon products on a periodic schedule, persists every observed price, detects drops against the previous observation, and sends a notification (console or Slack webhook) when a drop crosses a configured threshold. A React dashboard renders the price history per product.
 
+---
+
+###  Personal discussion regarding Design choices and how AI helped or failed and Code Analyses (AI generated).
+ 1. [Design choices](/Design-doc.md)
+ 2. [AI choices](/AI-doc.md)
+ 3. [AI-generated Code Analyses](/ANALYSIS.md)
+
+---
+
+# TODO: Add demo images/gif/video
+
+---
+
 ## Requirements
 
 - Docker + Docker Compose (recommended)
