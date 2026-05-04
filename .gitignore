@@ -26,3 +26,4 @@ ProjectDeliverables.md
 # DB
 *.sqlite
 .obsidian/
+.agents/
