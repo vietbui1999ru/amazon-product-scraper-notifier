@@ -10,7 +10,8 @@ __pycache__/
 backend/.env
 .env
 .github/
-.claude/
+.claude/*
+!.claude/agents/
 .playwright-mcp/
 
 # Node
