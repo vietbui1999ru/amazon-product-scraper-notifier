@@ -43,7 +43,7 @@ class PriceCheck(Base):
     product_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False
     )
-    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="USD")
     scraped_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
