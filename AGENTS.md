@@ -29,7 +29,7 @@ Reasoning effort:
 /prd      → invoke to-prd skill
 /issues   → invoke to-issues skill
 /debug    → invoke systematic-debugging skill (Iron Law: phases 1-4, no fixes without root cause)
-/verify   → invoke verification-before-completion skill (Iron Law: evidence before claims)
+/verify   → invoke verification-before-completion skill, then review-council skill (sequential)
 /arch     → invoke improve-codebase-architecture skill
 /tdd      → invoke tdd skill
 /council  → run council script (see below)
