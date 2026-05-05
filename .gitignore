@@ -27,3 +27,6 @@ ProjectDeliverables.md
 *.sqlite
 .obsidian/
 .agents/
+
+# Review council output (ephemeral session artifacts)
+.review/
