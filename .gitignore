@@ -12,6 +12,7 @@ backend/.env
 .github/
 .claude/*
 !.claude/agents/
+!.claude/skills/
 .playwright-mcp/
 
 # Node
