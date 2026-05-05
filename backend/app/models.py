@@ -51,7 +51,6 @@ class PriceCheck(Base):
     scrape_success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    notification_lock: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source: Mapped[str] = mapped_column(String(20), nullable=False, server_default="amazon")
 
     product: Mapped["Product"] = relationship("Product", back_populates="price_checks")
