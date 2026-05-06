@@ -159,16 +159,20 @@ class ProductRepository:
         return product
 
     async def get_previous_successful_price(
-        self, product_id: int, exclude_id: int
+        self, product_id: int, exclude_id: int | None = None, source: str | None = None
     ) -> PriceCheck | None:
+        conditions = [
+            PriceCheck.product_id == product_id,
+            PriceCheck.scrape_success.is_(True),
+            PriceCheck.price.is_not(None),
+        ]
+        if exclude_id is not None:
+            conditions.append(PriceCheck.id != exclude_id)
+        if source is not None:
+            conditions.append(PriceCheck.source == source)
         stmt = (
             select(PriceCheck)
-            .where(
-                PriceCheck.product_id == product_id,
-                PriceCheck.scrape_success.is_(True),
-                PriceCheck.price.is_not(None),
-                PriceCheck.id != exclude_id,
-            )
+            .where(*conditions)
             .order_by(PriceCheck.scraped_at.desc(), PriceCheck.id.desc())
             .limit(1)
         )
