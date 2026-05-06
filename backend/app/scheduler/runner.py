@@ -140,7 +140,7 @@ async def _build_drop_event(
     This ordering keeps the DB transaction closed before the Slack HTTP call and
     ensures at-most-once delivery (notified=True committed before send is attempted).
     """
-    previous = await repo.get_previous_successful_price(product.id, exclude_id=price_check.id)
+    previous = await repo.get_previous_successful_price(product.id, exclude_id=price_check.id, source="amazon")
     if previous is None or previous.price is None:
         return None
 

@@ -269,7 +269,7 @@ async def demo_drop(
             detail="Product not found. Add it first via POST /api/products.",
         )
 
-    previous = await repo.get_last_successful_price(product.id)
+    previous = await repo.get_previous_successful_price(product.id, source="amazon")
 
     check = PriceCheck(
         product_id=product.id,
