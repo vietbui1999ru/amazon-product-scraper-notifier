@@ -1,19 +1,27 @@
-# Price Drop Monitor — Caddy reverse proxy (CT 200, 10.20.0.2)
-# TLS: "tls internal" = Caddy's built-in local CA (no Let's Encrypt needed for .bui TLD)
-# Trust the root at: /data/caddy/pki/authorities/local/root.crt
+# Price Drop Monitor — Caddy (internal HTTP router)
 #
-# Proxy targets are CT 201 (10.20.0.3) on vmbr1:
-#   frontend nginx  → 10.20.0.3:8080
-#   backend FastAPI → 10.20.0.3:8000
+# TLS is terminated by Cloudflare Tunnel at the edge.
+# Caddy listens on :80 inside Docker — never exposed to the host directly.
+# Security headers set here pass through the tunnel to the browser.
 
-amazonscraper.viet.bui {
-	tls internal
+:80 {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	handle /docs* {
+		reverse_proxy docs:80
+	}
 
 	handle /api/* {
-		reverse_proxy 10.20.0.3:8000
+		reverse_proxy backend:8000
 	}
 
 	handle {
-		reverse_proxy 10.20.0.3:8080
+		reverse_proxy frontend:80
 	}
 }

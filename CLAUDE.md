@@ -2,19 +2,31 @@
 
 ## Architecture
 
-**2-LXC Proxmox homelab:**
-- CT 200 (10.0.0.50/vmbr0, 10.20.0.2/vmbr1): Caddy TLS reverse proxy → domain `amazonscraper.viet.bui`
-- CT 201 (10.20.0.3/vmbr1 only): Docker app stack (no public exposure)
-- Proxmox host NAT: vmbr1 → vmbr0 for CT 201 internet access (docker pulls, Playwright → Amazon)
+**Single-LXC Proxmox homelab:**
+- One LXC with Docker stack + Caddy in the same compose file
+- Caddy handles TLS termination and public exposure (ports 80/443 only)
+- Backend and frontend have no host port bindings — only reachable via Docker network
+- Proxmox forwards ports 80/443 to the LXC's IP
 
-**Docker services on CT 201 (`docker-compose.prod.yml`):**
-| Service | Role | Port |
+**Docker services (`docker-compose.prod.yml`):**
+| Service | Role | Exposure |
 |---|---|---|
-| `frontend` | React/Vite SPA served by nginx | 10.20.0.3:80 |
-| `backend` | FastAPI + async scheduler + Playwright | 10.20.0.3:8000 |
-| `postgres` | PostgreSQL 16 — primary DB | internal |
-| `redis` | Redis 7 — cache + force-check queue | internal |
-| `docs` | Static docs site | internal |
+| `caddy` | TLS reverse proxy | host ports 80, 443 |
+| `frontend` | React/Vite SPA served by nginx | Docker `web` network only |
+| `backend` | FastAPI + async scheduler + Playwright | Docker `web` + `db` networks |
+| `postgres` | PostgreSQL 16 — primary DB | Docker `db` network (internal) |
+| `redis` | Redis 7 — cache + force-check queue | Docker `db` network (internal) |
+| `docs` | Static MkDocs site served by nginx | Docker `web` network only |
+
+**Networks:**
+- `web`: caddy, frontend, backend, docs — has internet egress (Playwright needs it)
+- `db`: backend, postgres, redis — `internal: true`, no egress
+
+**Public access via Cloudflare Tunnel:**
+- `cloudflared` runs inside Docker, connects outbound to Cloudflare — no inbound ports needed
+- Cloudflare terminates public TLS; traffic arrives at Caddy as plain HTTP on `:80`
+- Set `CLOUDFLARE_TUNNEL_TOKEN` in `.env` (get token from Cloudflare Zero Trust → Tunnels)
+- Configure the public hostname → `http://caddy:80` in the Cloudflare dashboard
 
 ## Key Design Decisions
 
@@ -142,7 +154,7 @@ Double-send guard: pg_try_advisory_xact_lock(product_id) per commit
 ## Common curl Commands
 
 ```bash
-BASE=http://10.20.0.3:8000
+BASE=https://your-domain.com  # or http://localhost:8000 for local dev
 
 # List products
 curl $BASE/api/products | jq

@@ -12,6 +12,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import verify_api_key
 from app.cache import (
     cache_product,
     get_cached_products_list,
@@ -157,6 +158,7 @@ async def add_product(
     body: AddProductRequest,
     response: Response,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ) -> ProductResponse:
     if not _AMAZON_ASIN_URL_RE.search(body.url):
         raise HTTPException(status_code=400, detail="URL must be a valid Amazon product URL containing a /dp/ASIN")
@@ -224,6 +226,7 @@ async def update_product_image(
     product_id: int,
     body: UpdateProductImageRequest,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ) -> ProductResponse:
     repo = ProductRepository(session)
     product = await repo.update_product_image(product_id, body.image_url)
@@ -249,6 +252,7 @@ async def demo_drop(
     request: Request,
     body: DemoDropRequest,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ):
     """Inject a fake price drop and fire the notifier. Redis-first product lookup."""
     if not _AMAZON_ASIN_URL_RE.search(body.url):
@@ -330,6 +334,7 @@ async def force_check(
     request: Request,
     body: ForceCheckRequest,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ):
     from asyncio import QueueFull
 
@@ -392,6 +397,7 @@ async def schedule_price(
     request: Request,
     body: SchedulePriceRequest,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ):
     from datetime import timezone
     from decimal import Decimal
@@ -463,6 +469,7 @@ async def cancel_scheduled_price(
     request: Request,
     scheduled_id: int,
     session: AsyncSession = Depends(get_db),
+    _auth: None = Depends(verify_api_key),
 ):
     from datetime import timezone
 
@@ -526,7 +533,7 @@ async def get_config():
 
 @router.patch("/config")
 @limiter.limit("30/minute")
-async def update_config(request: Request, body: UpdateConfigRequest):
+async def update_config(request: Request, body: UpdateConfigRequest, _auth: None = Depends(verify_api_key)):
     rc = get_runtime_config()
     updates = body.model_dump(exclude_none=True)
     if "scraper_min_delay" in updates and "scraper_max_delay" not in updates:

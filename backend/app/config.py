@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # Set via DATABASE_URL env var or .env — never from config.yaml
     database_url: str = "postgresql+asyncpg://pricechecker:pricechecker@localhost:5433/pricechecker"
     slack_webhook_url: str = ""
+    # Empty string disables auth — all mutation endpoints require this key when set
+    api_key: str = ""
     check_interval_seconds: int = 300
     log_level: str = "INFO"
 

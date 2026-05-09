@@ -16,6 +16,13 @@ if ! grep -q "POSTGRES_PASSWORD=" .env || grep -q "POSTGRES_PASSWORD=$" .env; th
   exit 1
 fi
 
+if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q "CLOUDFLARE_TUNNEL_TOKEN=" .env; then
+  echo "ERROR: CLOUDFLARE_TUNNEL_TOKEN not set."
+  echo "       Create a tunnel at: https://one.dash.cloudflare.com/ → Networks → Tunnels"
+  echo "       Then add CLOUDFLARE_TUNNEL_TOKEN=<token> to .env"
+  exit 1
+fi
+
 # ── Build ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" != "--no-build" ]]; then
   echo "==> Building images..."
@@ -57,11 +64,5 @@ echo ""
 echo "✓  Deployed. Services:"
 $COMPOSE ps
 echo ""
-echo "  Frontend : http://10.20.0.3:80   (via CT 200 Caddy → https://amazonscraper.viet.bui)"
-echo "  Backend  : http://10.20.0.3:8000 (via CT 200 Caddy → /api/*)"
-echo "  Docs     : http://10.20.0.3:80   (served by docs container via frontend proxy)"
-echo ""
-echo "  Caddy TLS CA is on CT 200. To trust it on your machine:"
-echo "    ssh root@10.0.0.50 'docker cp caddy:/data/caddy/pki/authorities/local/root.crt /tmp/caddy-root.crt'"
-echo "    scp root@10.0.0.50:/tmp/caddy-root.crt ./caddy-root.crt"
-echo "    sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain caddy-root.crt"
+echo "  Access via your Cloudflare Tunnel domain (set in Cloudflare dashboard)."
+echo "  cloudflared logs: docker compose -f docker-compose.prod.yml logs cloudflared"

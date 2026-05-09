@@ -1,15 +1,31 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    networks:
+      - web
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - frontend
+      - backend
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    networks:
+      - web
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - caddy
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        VITE_API_KEY: ${VITE_API_KEY:-}
     restart: unless-stopped
     networks:
-      - internal
-    ports:
-      - "10.20.0.3:8080:80"
+      - web
 
   backend:
     build:
@@ -18,9 +34,8 @@ services:
     restart: unless-stopped
     shm_size: '256m'
     networks:
-      - internal
-    ports:
-      - "10.20.0.3:8000:8000"
+      - web
+      - db
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,7 +47,6 @@ services:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_KEY: ${API_KEY:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
       CONFIG_PATH: /app/config.yaml
     volumes:
       - ./config.yaml:/app/config.yaml:ro
@@ -44,13 +58,13 @@ services:
       dockerfile: Dockerfile.docs
     restart: unless-stopped
     networks:
-      - internal
+      - web
 
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     networks:
-      - internal
+      - db
     environment:
       POSTGRES_USER: pricechecker
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -67,7 +81,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     networks:
-      - internal
+      - db
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -78,8 +92,11 @@ services:
       retries: 5
 
 networks:
-  internal:
+  web:
+    driver: bridge
+  db:
     internal: true
+    driver: bridge
 
 volumes:
   postgres_data:
